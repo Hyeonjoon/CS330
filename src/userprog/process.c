@@ -20,7 +20,7 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-
+char *file_name_global;
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -30,6 +30,7 @@ process_execute (const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
+  //printf("file_name : %s\n", file_name);
 
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -38,10 +39,19 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  char *token, *save_ptr, *file_name_only;
+
+  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+      token = strtok_r (NULL, " ", &save_ptr)){
+    file_name_only = token;
+    break;
+  }
+
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); 
+  tid = thread_create (file_name_only, PRI_DEFAULT, start_process, fn_copy);
+  if (tid == TID_ERROR){
+    palloc_free_page (fn_copy);
+  } 
   return tid;
 }
 
@@ -50,6 +60,7 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
+  //printf("start start_process\n");
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
@@ -59,7 +70,72 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+
+  char *token, *save_ptr;
+  char *addr[100];
+  char *arguments[100];
+  int count = 0;
+
+  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+      token = strtok_r (NULL, " ", &save_ptr)){
+    arguments[count] = token;
+    count += 1;
+  }
+
+
+
+  //printf("argv[0] : %s\n", argv[0]);
+
+  success = load (arguments[0], &if_.eip, &if_.esp);
+  /* If load successed, stack arguments. */
+  if (success){
+
+    int i;
+    size_t sum_size = 0;
+
+    for (i=count-1;i>=0;i--){
+    //for (i=0;i<count;i++){
+  
+      size_t size = strlen(arguments[i])+1;
+      sum_size += size;
+      if_.esp -= size;
+      //memcpy(addr[i], (char *)if_.esp, sizeof(if_.esp));
+      addr[i] = (char *)if_.esp;
+      memcpy(if_.esp, arguments[i], size);
+
+    }
+    // word-align
+    int reminder = sum_size % 4;
+    if(reminder != 0){
+      if_.esp -= (4-reminder);
+    }
+
+    //push null
+
+    if_.esp -= 4;
+    *(char **)if_.esp = 0;
+
+    for(i=count-1;i>=0;i--){
+      if_.esp -= 4;
+      *(char **)if_.esp = addr[i];
+    }
+
+    // push argv
+    char **start_argv = (char **)if_.esp;
+    if_.esp -= 4;
+    *(char ***)if_.esp = start_argv;
+
+    // push argc
+    if_.esp -= 4;
+    *(int *)if_.esp = count;
+    // //fake return address
+    if_.esp -= 4;
+    //memcpy((char *)if_.esp, "\0", 4);
+    *(void **)if_.esp = 0;
+
+
+    //hex_dump((uintptr_t)if_.esp, (void*)if_.esp, 100, true);
+  }
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
@@ -88,6 +164,8 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid UNUSED) 
 {
+  int i;
+  for(i=0; i<10000000;i++);
   return -1;
 }
 
@@ -437,6 +515,7 @@ setup_stack (void **esp)
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
+        //*esp = PHYS_BASE-12;
         *esp = PHYS_BASE;
       else
         palloc_free_page (kpage);
