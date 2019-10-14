@@ -1,4 +1,5 @@
 #include "userprog/process.h"
+#include "userprog/syscall.h"
 #include <debug.h>
 #include <inttypes.h>
 #include <round.h>
@@ -20,16 +21,23 @@
 
 static thread_func start_process NO_RETURN;
 static bool load (const char *cmdline, void (**eip) (void), void **esp);
-char *file_name_global;
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
    thread id, or TID_ERROR if the thread cannot be created. */
+// struct temp{
+//   char *fn_copy_temp;
+//   struct thread *t_temp;
+// };
+
 tid_t
 process_execute (const char *file_name) 
 {
-  char *fn_copy;
+  char *fn_copy, *fn_copy2;
   tid_t tid;
+
+  //struct temp* temp = malloc(sizeof(struct temp *));
   //printf("file_name : %s\n", file_name);
 
   /* Make a copy of FILE_NAME.
@@ -39,19 +47,30 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
 
+  fn_copy2 = palloc_get_page (0);
+  if (fn_copy2 == NULL)
+    return TID_ERROR;
+  strlcpy (fn_copy2, file_name, PGSIZE);
+
   char *token, *save_ptr, *file_name_only;
 
-  for (token = strtok_r (file_name, " ", &save_ptr); token != NULL;
+  for (token = strtok_r (fn_copy2, " ", &save_ptr); token != NULL;
       token = strtok_r (NULL, " ", &save_ptr)){
     file_name_only = token;
     break;
   }
 
+  //temp->fn_copy_temp = fn_copy;
+  //temp->t_temp = thread_current();
+
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (file_name_only, PRI_DEFAULT, start_process, fn_copy);
+  //tid = thread_create (file_name_only, PRI_DEFAULT, start_process, temp);
+
   if (tid == TID_ERROR){
     palloc_free_page (fn_copy);
-  } 
+  }
+  
   return tid;
 }
 
@@ -59,9 +78,15 @@ process_execute (const char *file_name)
    running. */
 static void
 start_process (void *file_name_)
+//start_process (void* temp)
 {
-  //printf("start start_process\n");
+  // struct temp* temp_ptr = (struct temp*)temp;
   char *file_name = file_name_;
+  //char *file_name = temp_ptr->fn_copy_temp;
+  //struct thread* parent = temp_ptr->t_temp;
+
+  //thread_current()->parent_thread = parent;
+
   struct intr_frame if_;
   bool success;
 
@@ -71,7 +96,8 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  char *token, *save_ptr;
+  char *token;
+  char *save_ptr;
   char *addr[100];
   char *arguments[100];
   int count = 0;
@@ -89,6 +115,8 @@ start_process (void *file_name_)
   success = load (arguments[0], &if_.eip, &if_.esp);
   /* If load successed, stack arguments. */
   if (success){
+    struct thread* cur = thread_current();
+    sema_up(&cur->parent_thread->child_sema);
 
     int i;
     size_t sum_size = 0;
@@ -162,10 +190,12 @@ start_process (void *file_name_)
    This function will be implemented in problem 2-2.  For now, it
    does nothing. */
 int
-process_wait (tid_t child_tid UNUSED) 
+process_wait (tid_t child_tid) 
 {
   int i;
   for(i=0; i<10000000;i++);
+  // if(child_tid != TID_ERROR)
+  //   sys_wait((pid_t) child_tid);
   return -1;
 }
 
