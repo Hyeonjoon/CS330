@@ -24,6 +24,8 @@ static void
 syscall_handler (struct intr_frame *f) 
 {
   uint32_t status;
+  pid_t pid;
+  int size;
 
   switch(*(uint32_t *)(f->esp)){
     case SYS_HALT:
@@ -43,7 +45,9 @@ syscall_handler (struct intr_frame *f)
       NOT_REACHED ();
       break;
     case SYS_EXEC:
-      sys_exec((char *)*(char **)((f->esp)+4));
+      
+      pid = sys_exec((char *)*(char **)((f->esp)+4));
+      f->eax = pid;
       //printf("SYS_EXEC\n");
       break;
     case SYS_WAIT:
@@ -81,8 +85,10 @@ syscall_handler (struct intr_frame *f)
       // else{
       //   printf("False\n");
       // }
-      sys_write((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
+      
+      size = sys_write((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
         (unsigned)*(uint32_t *)((f->esp)+12));
+      f->eax = size;
       break;
     case SYS_SEEK:
       //printf("SYS_SEEK\n");
@@ -147,13 +153,19 @@ sys_exec (const char *cmd_line){
   tid_t child_tid = process_execute (cmd_line);
   sema_down(&cur->child_sema);
 
+  
 
   // pid_t pid = (pid_t) child_tid;
   // p.pid = pid;
   // list_push_back(&cur->child_list, &p.p_elem);
 
 
-  return (pid_t) child_tid;
+  if(cur->is_load_successful) {
+    return (pid_t) child_tid;
+  }
+  else {
+    return (pid_t) -1;
+  }
 
 }
 

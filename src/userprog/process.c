@@ -70,7 +70,6 @@ process_execute (const char *file_name)
   if (tid == TID_ERROR){
     palloc_free_page (fn_copy);
   }
-  
   return tid;
 }
 
@@ -116,6 +115,8 @@ start_process (void *file_name_)
   /* If load successed, stack arguments. */
   if (success){
     struct thread* cur = thread_current();
+
+    cur->parent_thread->is_load_successful = true;
     sema_up(&cur->parent_thread->child_sema);
 
     int i;
@@ -167,9 +168,14 @@ start_process (void *file_name_)
 
   /* If load failed, quit. */
   palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();
+  if (!success){ 
+    struct thread* cur = thread_current();
 
+    cur->parent_thread->is_load_successful = false;
+    sema_up(&cur->parent_thread->child_sema);
+    
+    thread_exit ();
+  }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -333,7 +339,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   file = filesys_open (file_name);
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      //printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
 

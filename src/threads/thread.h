@@ -97,6 +97,8 @@ struct thread
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
+    bool is_load_successful;
+
     uint32_t *pagedir;                  /* Page directory. */
     struct thread *parent_thread;
     struct list child_list;
