@@ -7,6 +7,7 @@
 #include "lib/user/syscall.h"
 #include "threads/vaddr.h"
 #include "threads/synch.h"
+#include "devices/shutdown.h"
 
 
 static void syscall_handler (struct intr_frame *);
@@ -25,11 +26,13 @@ syscall_handler (struct intr_frame *f)
 {
   uint32_t status;
   pid_t pid;
-  int size, exit_status;
+  int exit_status, open, filesize, read_size, write_size;
+  unsigned tell;
+  bool create, remove;
 
   switch(*(uint32_t *)(f->esp)){
     case SYS_HALT:
-      //printf("SYS_HALT\n");
+      shutdown_power_off();
       break;
     case SYS_EXIT:
       //printf("SYS_EXIT\n");  
@@ -53,7 +56,8 @@ syscall_handler (struct intr_frame *f)
       f->eax = exit_status;
       break;
     case SYS_CREATE:
-      //printf("SYS_CREATE\n");
+      create = sys_create(*(char **)((f->esp)+4), *(unsigned *)((f->esp)+8));
+      f->eax = create;
       break;
     case SYS_REMOVE:
       //printf("SYS_REMOVE\n");
@@ -68,9 +72,9 @@ syscall_handler (struct intr_frame *f)
       //printf("SYS_READ\n");
       break;
     case SYS_WRITE:
-      size = sys_write((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
+      write_size = sys_write((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
         (unsigned)*(uint32_t *)((f->esp)+12));
-      f->eax = size;
+      f->eax = write_size;
       break;
     case SYS_SEEK:
       //printf("SYS_SEEK\n");
@@ -114,6 +118,7 @@ sys_exit (int status){
   // }
   if(thread_current()->parent_thread != NULL){
     thread_current()->exit_status = status;
+    sema_up(&thread_current()->sema);
     sema_up(&thread_current()->parent_thread->child_sema);
   }
   printf("%s: exit(%d)\n", thread_current()->name, status);
@@ -143,28 +148,8 @@ int
 sys_wait (pid_t pid){
 
   int exit_status = -1;
-  struct thread *cur = thread_current();
-  struct thread *child_thread = NULL;
-
-  if(!list_empty(&thread_current()->child_list)){
-    struct list_elem *c;
-    for (c = list_begin (&thread_current()->child_list); c != list_end (&thread_current()->child_list);
-            c = list_next (c))
-    {
-      struct thread *t = list_entry (c, struct thread, child_elem);
-      if (t->tid == (tid_t) pid){
-        child_thread = t;
-        //list_remove(&t->child_elem);
-        break;
-      }
-    }
-  }
-
-  if(child_thread == NULL) return -1;
-  
-  sema_down(&cur->child_sema);
-
-  list_remove(&child_thread->child_elem);
+  // struct thread *cur = thread_current();
+  // struct thread *child_thread = NULL;
 
   // if(!list_empty(&thread_current()->child_list)){
   //   struct list_elem *c;
@@ -174,17 +159,30 @@ sys_wait (pid_t pid){
   //     struct thread *t = list_entry (c, struct thread, child_elem);
   //     if (t->tid == (tid_t) pid){
   //       child_thread = t;
-  //       list_remove(&t->child_elem);
   //       break;
   //     }
   //   }
   // }
 
-  exit_status = child_thread->exit_status;
+  // if(child_thread == NULL) return -1;
+  
+  // sema_down(&child_thread->sema);
+  // sema_down(&cur->child_sema);
+
+  // list_remove(&child_thread->child_elem);
+
+  // exit_status = child_thread->exit_status;
+
+  exit_status = process_wait((tid_t) pid);
 
 
   return exit_status;
 }
+
+bool sys_create (const char *file, unsigned initial_size){
+  return false;
+}
+
 
 
 

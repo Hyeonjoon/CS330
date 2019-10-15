@@ -52,7 +52,7 @@ process_execute (const char *file_name)
     return TID_ERROR;
   strlcpy (fn_copy2, file_name, PGSIZE);
 
-  char *token, *save_ptr, *file_name_only;
+  char *token, *save_ptr, *file_name_only = NULL;
 
   for (token = strtok_r (fn_copy2, " ", &save_ptr); token != NULL;
       token = strtok_r (NULL, " ", &save_ptr)){
@@ -79,12 +79,10 @@ static void
 start_process (void *file_name_)
 //start_process (void* temp)
 {
-  // struct temp* temp_ptr = (struct temp*)temp;
-  char *file_name = file_name_;
-  //char *file_name = temp_ptr->fn_copy_temp;
-  //struct thread* parent = temp_ptr->t_temp;
+  struct thread* cur = thread_current();
 
-  //thread_current()->parent_thread = parent;
+  char *file_name = file_name_;
+
 
   struct intr_frame if_;
   bool success;
@@ -109,15 +107,16 @@ start_process (void *file_name_)
 
 
 
+
   //printf("argv[0] : %s\n", argv[0]);
 
   success = load (arguments[0], &if_.eip, &if_.esp);
+
+  cur->parent_thread->is_load_successful = success;
+  //sema_up(&cur->sema);  
+  sema_up(&cur->parent_thread->child_sema);
   /* If load successed, stack arguments. */
   if (success){
-    struct thread* cur = thread_current();
-
-    cur->parent_thread->is_load_successful = true;
-    sema_up(&cur->parent_thread->child_sema);
 
     int i;
     size_t sum_size = 0;
@@ -169,10 +168,6 @@ start_process (void *file_name_)
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success){ 
-    struct thread* cur = thread_current();
-
-    cur->parent_thread->is_load_successful = false;
-    sema_up(&cur->parent_thread->child_sema);
     
     thread_exit ();
   }
@@ -198,11 +193,38 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-  int i;
-  for(i=0; i<10000000;i++);
-  // if(child_tid != TID_ERROR)
-  //   sys_wait((pid_t) child_tid);
-  return -1;
+  // int i;
+  // for(i=0; i<10000000;i++);
+  // return -1;
+
+  int exit_status = -1;
+  struct thread *cur = thread_current();
+  struct thread *child_thread = NULL;
+
+  if(!list_empty(&thread_current()->child_list)){
+    struct list_elem *c;
+    for (c = list_begin (&thread_current()->child_list); c != list_end (&thread_current()->child_list);
+            c = list_next (c))
+    {
+      struct thread *t = list_entry (c, struct thread, child_elem);
+      if (t->tid == child_tid){
+        child_thread = t;
+        break;
+      }
+    }
+  }
+
+  if(child_thread == NULL) return -1;
+  
+  sema_down(&child_thread->sema);
+  //sema_down(&cur->child_sema);
+
+  list_remove(&child_thread->child_elem);
+
+  exit_status = child_thread->exit_status;
+
+
+  return exit_status;
 }
 
 /* Free the current process's resources. */
