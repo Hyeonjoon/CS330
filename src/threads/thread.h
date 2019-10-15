@@ -99,6 +99,8 @@ struct thread
     /* Owned by userprog/process.c. */
     bool is_load_successful;
     int exit_status;
+    int fd;
+    struct list file_list;
 
     uint32_t *pagedir;                  /* Page directory. */
     struct thread *parent_thread;

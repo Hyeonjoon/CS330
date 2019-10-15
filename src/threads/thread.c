@@ -470,7 +470,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->is_load_successful = false;
   t->exit_status = -1;
+  t->fd = 2;
   list_init(&t->child_list);
+  list_init(&t->file_list);
   sema_init(&t->child_sema, 0);
   sema_init(&t->sema, 0);
 

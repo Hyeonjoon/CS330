@@ -8,6 +8,8 @@
 #include "threads/vaddr.h"
 #include "threads/synch.h"
 #include "devices/shutdown.h"
+#include "filesys/file.h"
+#include "filesys/filesys.h"
 
 
 static void syscall_handler (struct intr_frame *);
@@ -34,8 +36,8 @@ syscall_handler (struct intr_frame *f)
     case SYS_HALT:
       shutdown_power_off();
       break;
+
     case SYS_EXIT:
-      //printf("SYS_EXIT\n");  
       status = (uint32_t)*(uint32_t *)((f->esp)+4);
       if (!is_user_vaddr(status)){
         sys_exit(-1);
@@ -43,52 +45,67 @@ syscall_handler (struct intr_frame *f)
       else{
         sys_exit(status);
       }
-      // exit((int)*(uint32_t *)((f->esp)+4));
       NOT_REACHED ();
       break;
+
     case SYS_EXEC:
       pid = sys_exec((char *)*(char **)((f->esp)+4));
       f->eax = pid;
-      //printf("SYS_EXEC\n");
       break;
+
     case SYS_WAIT:
       exit_status = sys_wait(*(int *)((f->esp)+4));
       f->eax = exit_status;
       break;
+
     case SYS_CREATE:
       create = sys_create(*(char **)((f->esp)+4), *(unsigned *)((f->esp)+8));
       f->eax = create;
       break;
+
     case SYS_REMOVE:
-      //printf("SYS_REMOVE\n");
+      remove = sys_remove( *(char **)((f->esp)+4) );
+      f->eax = remove;
       break;
+
     case SYS_OPEN:
-      //printf("SYS_OPEN\n");
+      open = sys_open( *(char **)((f->esp)+4) );
+      f->eax = open;
       break;
+
     case SYS_FILESIZE:
-      //printf("SYS_FILESIZE\n");
+      filesize = sys_filesize( *(int *)((f->esp)+4) );
+      f->eax = filesize;
       break;
+
     case SYS_READ:
-      //printf("SYS_READ\n");
+      read_size = sys_read((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
+        (unsigned)*(uint32_t *)((f->esp)+12));
+      f->eax = read_size;
       break;
+
     case SYS_WRITE:
       write_size = sys_write((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
         (unsigned)*(uint32_t *)((f->esp)+12));
       f->eax = write_size;
       break;
+
     case SYS_SEEK:
-      //printf("SYS_SEEK\n");
+      sys_seek(*(int *)((f->esp)+4), *(unsigned *)((f->esp)+8));
       break;
+
     case SYS_TELL:
-      //printf("SYS_TELL\n");
+      tell = sys_tell(*(int *)((f->esp)+4));
+      f->eax = tell;
       break;
+
     case SYS_CLOSE:
-      //printf("SYS_CLOSE\n");
+      sys_close(*(int *)((f->esp)+4));
       break;
 
 
     default:
-      //printf("Not matched");
+      printf("Not matched");
       break;
   }
 
@@ -109,13 +126,6 @@ sys_write (int fd, const void *buffer, unsigned size){
 void 
 sys_exit (int status){
 
-  // if(thread_current()->parent_thread != NULL){
-  //   sys_exit(sys_wait((pid_t)thread_current()->tid));
-  // }
-  // else{
-  //   printf("%s: exit(%d)\n", thread_current()->name, status);
-  //   thread_exit ();
-  // }
   if(thread_current()->parent_thread != NULL){
     thread_current()->exit_status = status;
     sema_up(&thread_current()->sema);
@@ -148,39 +158,52 @@ int
 sys_wait (pid_t pid){
 
   int exit_status = -1;
-  // struct thread *cur = thread_current();
-  // struct thread *child_thread = NULL;
-
-  // if(!list_empty(&thread_current()->child_list)){
-  //   struct list_elem *c;
-  //   for (c = list_begin (&thread_current()->child_list); c != list_end (&thread_current()->child_list);
-  //           c = list_next (c))
-  //   {
-  //     struct thread *t = list_entry (c, struct thread, child_elem);
-  //     if (t->tid == (tid_t) pid){
-  //       child_thread = t;
-  //       break;
-  //     }
-  //   }
-  // }
-
-  // if(child_thread == NULL) return -1;
-  
-  // sema_down(&child_thread->sema);
-  // sema_down(&cur->child_sema);
-
-  // list_remove(&child_thread->child_elem);
-
-  // exit_status = child_thread->exit_status;
 
   exit_status = process_wait((tid_t) pid);
-
 
   return exit_status;
 }
 
 bool sys_create (const char *file, unsigned initial_size){
-  return false;
+  if(file==NULL){
+    sys_exit(-1);
+    NOT_REACHED();
+  }
+  bool create_bool = filesys_create(file, initial_size);
+
+  return create_bool;
+}
+
+bool sys_remove (const char *file){
+  bool remove_bool = filesys_remove(file);
+  return remove_bool;
+}
+int sys_open (const char *file){
+
+  if(file==NULL) return -1;
+  struct thread* cur = thread_current ();
+  struct file* opened_file = filesys_open (file);
+  if(opened_file == NULL) return -1;
+  opened_file->file_fd = cur->fd;
+  list_push_back(&cur->file_list, &opened_file->file_elem);
+  cur->fd++;
+  return opened_file->file_fd;
+
+}
+int sys_filesize (int fd){
+  return -1;
+}
+int sys_read (int fd, void *buffer, unsigned size){
+  return -1;
+}
+void sys_seek (int fd, unsigned position){
+  return;
+}
+unsigned sys_tell (int fd){
+  return -1;
+}
+void sys_close (int fd){
+  return;
 }
 
 
