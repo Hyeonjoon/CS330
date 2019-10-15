@@ -98,12 +98,15 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     bool is_load_successful;
+    int exit_status;
 
     uint32_t *pagedir;                  /* Page directory. */
     struct thread *parent_thread;
+
     struct list child_list;
+    struct list_elem child_elem;        /* List item for child_list */
     struct semaphore* child_sema;
-    //struct list_elem child_elem;        /* List item for child_list */
+
 #endif
 
     /* Owned by thread.c. */

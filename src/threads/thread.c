@@ -182,6 +182,7 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   t->parent_thread = thread_current();
+  list_push_back(&thread_current()->child_list, &t->child_elem);
   tid = t->tid = allocate_tid ();
 
   /* Stack frame for kernel_thread(). */
@@ -464,6 +465,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->is_load_successful = false;
+  t->exit_status = -1;
   list_init(&t->child_list);
   sema_init(&t->child_sema, 0);
   t->magic = THREAD_MAGIC;

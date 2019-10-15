@@ -25,15 +25,14 @@ syscall_handler (struct intr_frame *f)
 {
   uint32_t status;
   pid_t pid;
-  int size;
+  int size, exit_status;
 
   switch(*(uint32_t *)(f->esp)){
     case SYS_HALT:
       //printf("SYS_HALT\n");
       break;
     case SYS_EXIT:
-      //printf("SYS_EXIT\n");
-      
+      //printf("SYS_EXIT\n");  
       status = (uint32_t)*(uint32_t *)((f->esp)+4);
       if (!is_user_vaddr(status)){
         sys_exit(-1);
@@ -45,14 +44,13 @@ syscall_handler (struct intr_frame *f)
       NOT_REACHED ();
       break;
     case SYS_EXEC:
-      
       pid = sys_exec((char *)*(char **)((f->esp)+4));
       f->eax = pid;
       //printf("SYS_EXEC\n");
       break;
     case SYS_WAIT:
-      //sys_wait(*(int *)((f->esp)+4));
-      //printf("SYS_WAIT\n");
+      exit_status = sys_wait(*(int *)((f->esp)+4));
+      f->eax = exit_status;
       break;
     case SYS_CREATE:
       //printf("SYS_CREATE\n");
@@ -70,22 +68,6 @@ syscall_handler (struct intr_frame *f)
       //printf("SYS_READ\n");
       break;
     case SYS_WRITE:
-      //printf("SYS_WRITE\n");
-      // printf("addr1 : %x\n", (int)((f->esp)+4));
-      // printf("%d\n", (int)*(uint32_t *)((f->esp)+4));
-      // printf("addr2 : %x\n", (int)((f->esp)+8));
-      // printf("%s\n", (char *)*(uint32_t *)((f->esp)+8));
-      // printf("%x\n", (char *)*(uint32_t *)((f->esp)+8));
-      // printf("addr3 : %x\n", (int)((f->esp)+12));
-      // printf("%d\n", (unsigned)*(uint32_t *)((f->esp)+12));
-      
-      // if( put_user((uint8_t *)*(uint8_t **)((f->esp)+8), (uint8_t)*(uint8_t *)((f->esp)+12)) ){
-      //   printf("True\n");
-      // }
-      // else{
-      //   printf("False\n");
-      // }
-      
       size = sys_write((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
         (unsigned)*(uint32_t *)((f->esp)+12));
       f->eax = size;
@@ -120,11 +102,6 @@ sys_write (int fd, const void *buffer, unsigned size){
   }
 }
 
-struct process{
-  pid_t pid;
-  struct list_elem p_elem;
-};
-
 void 
 sys_exit (int status){
 
@@ -136,6 +113,7 @@ sys_exit (int status){
   //   thread_exit ();
   // }
   if(thread_current()->parent_thread != NULL){
+    thread_current()->exit_status = status;
     sema_up(&thread_current()->parent_thread->child_sema);
   }
   printf("%s: exit(%d)\n", thread_current()->name, status);
@@ -147,17 +125,9 @@ pid_t
 sys_exec (const char *cmd_line){
 
   struct thread* cur = thread_current ();
-  struct process p;
-
 
   tid_t child_tid = process_execute (cmd_line);
   sema_down(&cur->child_sema);
-
-  
-
-  // pid_t pid = (pid_t) child_tid;
-  // p.pid = pid;
-  // list_push_back(&cur->child_list, &p.p_elem);
 
 
   if(cur->is_load_successful) {
@@ -173,19 +143,44 @@ int
 sys_wait (pid_t pid){
 
   int exit_status = -1;
+  struct thread *cur = thread_current();
+  struct thread *child_thread = NULL;
+
+  if(!list_empty(&thread_current()->child_list)){
+    struct list_elem *c;
+    for (c = list_begin (&thread_current()->child_list); c != list_end (&thread_current()->child_list);
+            c = list_next (c))
+    {
+      struct thread *t = list_entry (c, struct thread, child_elem);
+      if (t->tid == (tid_t) pid){
+        child_thread = t;
+        //list_remove(&t->child_elem);
+        break;
+      }
+    }
+  }
+
+  if(child_thread == NULL) return -1;
+  
+  sema_down(&cur->child_sema);
+
+  list_remove(&child_thread->child_elem);
 
   // if(!list_empty(&thread_current()->child_list)){
   //   struct list_elem *c;
   //   for (c = list_begin (&thread_current()->child_list); c != list_end (&thread_current()->child_list);
   //           c = list_next (c))
   //   {
-  //     struct process *p = list_entry (c, struct process, p_elem);
-  //     if (p->pid == pid){
-        
-  //       list_remove(&p->p_elem);
+  //     struct thread *t = list_entry (c, struct thread, child_elem);
+  //     if (t->tid == (tid_t) pid){
+  //       child_thread = t;
+  //       list_remove(&t->child_elem);
+  //       break;
   //     }
   //   }
   // }
+
+  exit_status = child_thread->exit_status;
 
 
   return exit_status;
