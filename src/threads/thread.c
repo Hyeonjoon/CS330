@@ -188,9 +188,11 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
 #ifdef USERPROG
   t->parent_thread = thread_current();
+  
   lock_acquire(&child_list_lock);
   list_push_back(&thread_current()->child_list, &t->child_elem);
   lock_release(&child_list_lock);
+  
 #endif
   tid = t->tid = allocate_tid ();
 

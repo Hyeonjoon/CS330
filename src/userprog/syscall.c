@@ -80,12 +80,22 @@ syscall_handler (struct intr_frame *f)
       break;
 
     case SYS_READ:
+      // if (!is_user_vaddr(*(uint32_t *)((f->esp)+4)) || !is_user_vaddr(*(uint32_t *)((f->esp)+4))
+      //     || !is_user_vaddr(*(uint32_t *)((f->esp)+4))){
+      //   printf("here?\n");
+      //   sys_exit(-1);
+      // }
       read_size = sys_read((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
         (unsigned)*(uint32_t *)((f->esp)+12));
       f->eax = read_size;
       break;
 
     case SYS_WRITE:
+      // if (!is_user_vaddr(*(uint32_t *)((f->esp)+4)) || !is_user_vaddr(*(uint32_t *)((f->esp)+4))
+      //     || !is_user_vaddr(*(uint32_t *)((f->esp)+4))){
+      //   printf("here?!?@!?!??\n");
+      //   sys_exit(-1);
+      // }
       write_size = sys_write((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
         (unsigned)*(uint32_t *)((f->esp)+12));
       f->eax = write_size;
@@ -220,14 +230,13 @@ int sys_read (int fd, void *buffer, unsigned size){
   int read_size;
 
   if(fd==0) {
-    printf("FUCK\n");
     read_size = input_getc();
   }
   else{
     struct file* file_to_read = search_file(fd);
     if(file_to_read == NULL) return -1;
     if(file_to_read->open == false) return -1;
-    file_deny_write(file_to_read);
+    // file_deny_write(file_to_read);
     read_size = (int)file_read(file_to_read, buffer, size);
   }
   return read_size;
@@ -246,6 +255,7 @@ sys_write (int fd, const void *buffer, unsigned size){
     struct file *file_to_write = search_file(fd);
     if(file_to_write==NULL) return -1;
     if(file_to_write->open == false) return -1;
+    if(file_to_write->deny_write) return 0;
     off_t write_size = file_write(file_to_write, buffer, size);
 
     return (int)write_size;
@@ -270,7 +280,6 @@ void sys_close (int fd){
   {
     sys_exit(-1);
   }
-  file_allow_write(file_to_close);
   
   file_to_close->open = false;
   list_remove(&file_to_close->file_elem);

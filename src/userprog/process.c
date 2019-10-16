@@ -221,13 +221,14 @@ process_wait (tid_t child_tid)
 
   if(child_thread == NULL) return -1;
   
+  //if(is_user_vaddr(&child_thread->sema))
   sema_down(&child_thread->sema);
   //sema_down(&cur->child_sema);
 
   list_remove(&child_thread->child_elem);
-
+  
   exit_status = child_thread->exit_status;
-
+  
 
   return exit_status;
 }
@@ -369,7 +370,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
       //printf ("load: %s: open failed\n", file_name);
       goto done; 
     }
-
+  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -453,7 +454,9 @@ load (const char *file_name, void (**eip) (void), void **esp)
 
  done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
+  if(file!=NULL) 
+    file_deny_write(file);
+  //file_close (file);
   return success;
 }
 
