@@ -114,7 +114,9 @@ start_process (void *file_name_)
 
   cur->parent_thread->is_load_successful = success;
   //sema_up(&cur->sema);  
-  sema_up(&cur->parent_thread->child_sema);
+  if(cur->parent_thread->execute_file!=NULL)
+    file_deny_write(cur->parent_thread->execute_file);
+  sema_up(&cur->parent_thread->load_sema);
   /* If load successed, stack arguments. */
   if (success){
 
@@ -212,6 +214,7 @@ process_wait (tid_t child_tid)
       struct thread *t = list_entry (c, struct thread, child_elem);
       if (t->tid == child_tid){
         child_thread = t;
+        list_remove(&child_thread->child_elem);
         break;
       }
     }
@@ -221,11 +224,9 @@ process_wait (tid_t child_tid)
 
   if(child_thread == NULL) return -1;
   
-  //if(is_user_vaddr(&child_thread->sema))
   sema_down(&child_thread->sema);
-  //sema_down(&cur->child_sema);
 
-  list_remove(&child_thread->child_elem);
+  //sema_up(&cur->parent_thread->wait_sema);
   
   exit_status = child_thread->exit_status;
   
@@ -456,6 +457,7 @@ load (const char *file_name, void (**eip) (void), void **esp)
   /* We arrive here whether the load is successful or not. */
   if(file!=NULL) 
     file_deny_write(file);
+    thread_current()->execute_file = file;
   //file_close (file);
   return success;
 }

@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "threads/synch.h"
+#include "filesys/file.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -108,8 +109,10 @@ struct thread
 
     struct list child_list;
     struct list_elem child_elem;        /* List item for child_list */
-    struct semaphore child_sema;
+    struct semaphore load_sema;
+    struct semaphore wait_sema;
     struct semaphore sema;
+    struct file *execute_file;
 
 
 #endif
@@ -157,6 +160,7 @@ int thread_get_load_avg (void);
 struct lock file_list_lock;
 struct lock child_list_lock;
 struct lock read_file_list_lock;
+struct lock filesys_lock;
 
 
 

@@ -13,6 +13,7 @@ struct file
     bool open;
     int file_fd;
     struct list_elem file_elem;
+    char* file_name;
   };
 
 struct inode;

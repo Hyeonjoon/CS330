@@ -97,6 +97,7 @@ thread_init (void)
   lock_init (&file_list_lock);
   lock_init (&child_list_lock);
   lock_init (&read_file_list_lock);
+  lock_init (&filesys_lock);
 
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
@@ -484,8 +485,10 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->child_list);
   list_init(&t->file_list);
   list_init(&t->read_file_list);
-  sema_init(&t->child_sema, 0);
+  sema_init(&t->load_sema, 0);
+  sema_init(&t->wait_sema, 0);
   sema_init(&t->sema, 0);
+  t->execute_file = NULL;
 #endif
   t->magic = THREAD_MAGIC;
 

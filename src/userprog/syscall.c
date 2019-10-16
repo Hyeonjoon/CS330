@@ -11,11 +11,12 @@
 #include "filesys/file.h"
 #include "filesys/filesys.h"
 #include "devices/input.h"
+#include "userprog/pagedir.h"
 
 
 static void syscall_handler (struct intr_frame *);
-static int get_user(const uint8_t *uaddr);
-static bool put_user(uint8_t *udst, uint8_t byte);
+struct file* search_file_by_inode(struct inode *inode);
+void bad_ptr_exception(void* ptr);
 
 
 void
@@ -123,15 +124,25 @@ syscall_handler (struct intr_frame *f)
   //thread_exit ();
 }
 
+void bad_ptr_exception(void* ptr){
+  struct thread *cur = thread_current();
+  uint32_t *pd = cur-> pagedir;
+  if(ptr==NULL || !is_user_vaddr(ptr) || pagedir_get_page(pd, ptr)==NULL)
+    sys_exit(-1);
+}
+
 void 
 sys_exit (int status){
-
-  if(thread_current()->parent_thread != NULL){
-    thread_current()->exit_status = status;
-    sema_up(&thread_current()->sema);
-    sema_up(&thread_current()->parent_thread->child_sema);
+  struct thread* cur = thread_current();
+  if(cur->parent_thread != NULL){
+    cur->exit_status = status;
+    //file_allow_write(thread_current()->execute_file);
+    lock_acquire(&filesys_lock);
+    file_close(cur->execute_file);
+    lock_release(&filesys_lock);
+    sema_up(&cur->sema);
   }
-  printf("%s: exit(%d)\n", thread_current()->name, status);
+  printf("%s: exit(%d)\n", cur->name, status);
   thread_exit ();
   
 }
@@ -142,7 +153,7 @@ sys_exec (const char *cmd_line){
   struct thread* cur = thread_current ();
 
   tid_t child_tid = process_execute (cmd_line);
-  sema_down(&cur->child_sema);
+  sema_down(&cur->load_sema);
 
 
   if(cur->is_load_successful) {
@@ -157,33 +168,50 @@ sys_exec (const char *cmd_line){
 int 
 sys_wait (pid_t pid){
 
+  struct thread* cur = thread_current ();
+
+  //sema_down(&cur->wait_sema);
+
   int exit_status = -1;
 
   exit_status = process_wait((tid_t) pid);
+  
+
 
   return exit_status;
 }
 
 bool sys_create (const char *file, unsigned initial_size){
-  if(file==NULL){
-    sys_exit(-1);
-    NOT_REACHED();
-  }
+
+  bad_ptr_exception(file);
+
+  lock_acquire(&filesys_lock);
   bool create_bool = filesys_create(file, initial_size);
+  lock_release(&filesys_lock);
 
   return create_bool;
 }
 
 bool sys_remove (const char *file){
+  
+  bad_ptr_exception(file);
+
+  lock_acquire(&filesys_lock);
   bool remove_bool = filesys_remove(file);
+  lock_release(&filesys_lock);
   return remove_bool;
 }
 
 int sys_open (const char *file){
 
-  if(file==NULL) return -1;
+  bad_ptr_exception(file);
+
   struct thread* cur = thread_current ();
+
+  lock_acquire(&filesys_lock);
   struct file* opened_file = filesys_open (file);
+  lock_release(&filesys_lock);
+
   if(opened_file == NULL) return -1;
   opened_file->file_fd = cur->fd;
   opened_file->open = true;
@@ -193,11 +221,16 @@ int sys_open (const char *file){
   cur->fd++;
   return opened_file->file_fd;
 
+  
+  
+
 }
 
 struct file* search_file(int fd){
   struct thread* cur = thread_current();
   struct file* file_to_read = NULL;
+  lock_acquire(&file_list_lock);
+  
   if(!list_empty(&cur->file_list)){
     struct list_elem *fe;
     for (fe = list_begin (&cur->file_list); fe != list_end (&cur->file_list);
@@ -210,7 +243,29 @@ struct file* search_file(int fd){
       }
     }
   }
+
+  lock_release(&file_list_lock);
+  return file_to_read;
+}
+
+struct file* search_file_by_inode(struct inode *inode){
+  struct thread* cur = thread_current();
+  struct file* file_to_read = NULL;
+  lock_acquire(&file_list_lock);
   
+  if(!list_empty(&cur->file_list)){
+    struct list_elem *fe;
+    for (fe = list_begin (&cur->file_list); fe != list_end (&cur->file_list);
+            fe = list_next (fe))
+    {
+      struct file *f = list_entry (fe, struct file, file_elem);
+      if (f->inode == inode){
+        file_to_read = f;
+        break;
+      }
+    }
+  }
+  lock_release(&file_list_lock);
   return file_to_read;
 }
 
@@ -225,7 +280,8 @@ int sys_filesize (int fd){
 
 int sys_read (int fd, void *buffer, unsigned size){
 
-  if(!is_user_vaddr(buffer) || buffer==NULL) sys_exit(-1);
+  bad_ptr_exception(buffer);
+
 
   int read_size;
 
@@ -236,8 +292,9 @@ int sys_read (int fd, void *buffer, unsigned size){
     struct file* file_to_read = search_file(fd);
     if(file_to_read == NULL) return -1;
     if(file_to_read->open == false) return -1;
-    // file_deny_write(file_to_read);
+    lock_acquire(&filesys_lock);    
     read_size = (int)file_read(file_to_read, buffer, size);
+    lock_release(&filesys_lock);
   }
   return read_size;
 }
@@ -245,7 +302,7 @@ int sys_read (int fd, void *buffer, unsigned size){
 int 
 sys_write (int fd, const void *buffer, unsigned size){
 
-  if(!is_user_vaddr(buffer) || buffer==NULL) sys_exit(-1);
+  bad_ptr_exception(buffer);
 
   if(fd==1){ // Writes to console
     putbuf(buffer, size);
@@ -256,7 +313,10 @@ sys_write (int fd, const void *buffer, unsigned size){
     if(file_to_write==NULL) return -1;
     if(file_to_write->open == false) return -1;
     if(file_to_write->deny_write) return 0;
+
+    lock_acquire(&filesys_lock);
     off_t write_size = file_write(file_to_write, buffer, size);
+    lock_release(&filesys_lock);
 
     return (int)write_size;
   }
@@ -264,13 +324,18 @@ sys_write (int fd, const void *buffer, unsigned size){
 
 void sys_seek (int fd, unsigned position){
   struct file *file_to_seek = search_file(fd);
+  lock_acquire(&filesys_lock);  
   file_seek(file_to_seek, position);
+  lock_release(&filesys_lock);
   return;
 }
 
 unsigned sys_tell (int fd){
   struct file *file_to_tell = search_file(fd);
+  lock_acquire(&filesys_lock);
   off_t pos = file_tell(file_to_tell);
+  lock_release(&filesys_lock);
+  
   return (int) pos;
 }
 
@@ -284,29 +349,10 @@ void sys_close (int fd){
   file_to_close->open = false;
   list_remove(&file_to_close->file_elem);
 
+  lock_acquire(&filesys_lock);
   file_close(file_to_close);
+  lock_release(&filesys_lock);
+  
 
   return;
-}
-
-
-
-
-/* Read a byte at user virtual address UADDR.
-Returns byte value if successful, -1 if segmant fault occured. */
-static int
-get_user(const uint8_t *uaddr){
-  int result;
-  asm ("movl $1f, %0; movzbl %1, %0; 1:"
-      : "=&a" (result) : "m" (*uaddr));
-  return result;
-}
-/* Write BYTE to user address UDST.
-Return true if successful, false if a segmant fault occurred. */
-static bool
-put_user(uint8_t *udst, uint8_t byte){
-  int error_code;
-  asm ("movl $1f, %0; movb %b2, %1; 1:"
-      : "=&a" (error_code) , "=m" (*udst) : "q" (byte));
-  return error_code != -1;
 }
