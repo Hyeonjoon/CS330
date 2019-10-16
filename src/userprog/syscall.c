@@ -10,6 +10,7 @@
 #include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "devices/input.h"
 
 
 static void syscall_handler (struct intr_frame *);
@@ -175,6 +176,7 @@ int sys_open (const char *file){
   struct file* opened_file = filesys_open (file);
   if(opened_file == NULL) return -1;
   opened_file->file_fd = cur->fd;
+  opened_file->open = true;
   lock_acquire(&file_list_lock);
   list_push_back(&cur->file_list, &opened_file->file_elem);
   lock_release(&file_list_lock);
@@ -213,22 +215,28 @@ int sys_filesize (int fd){
 
 int sys_read (int fd, void *buffer, unsigned size){
 
-  if(!is_user_vaddr(buffer)) sys_exit(-1);
+  if(!is_user_vaddr(buffer) || buffer==NULL) sys_exit(-1);
 
-  if(fd==0) input_getc();
+  int read_size;
+
+  if(fd==0) {
+    printf("FUCK\n");
+    read_size = input_getc();
+  }
   else{
     struct file* file_to_read = search_file(fd);
     if(file_to_read == NULL) return -1;
-    off_t read_size = file_read(file_to_read, buffer, size);
-
-    return (int) read_size;
+    if(file_to_read->open == false) return -1;
+    file_deny_write(file_to_read);
+    read_size = (int)file_read(file_to_read, buffer, size);
   }
+  return read_size;
 }
 
 int 
 sys_write (int fd, const void *buffer, unsigned size){
 
-  if(!is_user_vaddr(buffer)) sys_exit(-1);
+  if(!is_user_vaddr(buffer) || buffer==NULL) sys_exit(-1);
 
   if(fd==1){ // Writes to console
     putbuf(buffer, size);
@@ -237,6 +245,7 @@ sys_write (int fd, const void *buffer, unsigned size){
   else{ 
     struct file *file_to_write = search_file(fd);
     if(file_to_write==NULL) return -1;
+    if(file_to_write->open == false) return -1;
     off_t write_size = file_write(file_to_write, buffer, size);
 
     return (int)write_size;
@@ -244,12 +253,30 @@ sys_write (int fd, const void *buffer, unsigned size){
 }
 
 void sys_seek (int fd, unsigned position){
+  struct file *file_to_seek = search_file(fd);
+  file_seek(file_to_seek, position);
   return;
 }
+
 unsigned sys_tell (int fd){
-  return -1;
+  struct file *file_to_tell = search_file(fd);
+  off_t pos = file_tell(file_to_tell);
+  return (int) pos;
 }
+
 void sys_close (int fd){
+  struct file *file_to_close = search_file(fd);
+  if(file_to_close == NULL || file_to_close->open == false)
+  {
+    sys_exit(-1);
+  }
+  file_allow_write(file_to_close);
+  
+  file_to_close->open = false;
+  list_remove(&file_to_close->file_elem);
+
+  file_close(file_to_close);
+
   return;
 }
 

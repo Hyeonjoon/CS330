@@ -101,6 +101,7 @@ struct thread
     int exit_status;
     int fd;
     struct list file_list;
+    struct list read_file_list;
 
     uint32_t *pagedir;                  /* Page directory. */
     struct thread *parent_thread;
@@ -155,6 +156,7 @@ int thread_get_load_avg (void);
 
 struct lock file_list_lock;
 struct lock child_list_lock;
+struct lock read_file_list_lock;
 
 
 
