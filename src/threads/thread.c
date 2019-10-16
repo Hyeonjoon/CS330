@@ -94,6 +94,9 @@ thread_init (void)
   list_init (&ready_list);
   list_init (&all_list);
 
+  lock_init (&file_list_lock);
+  lock_init (&child_list_lock);
+
   /* Set up a thread structure for the running thread. */
   initial_thread = running_thread ();
   init_thread (initial_thread, "main", PRI_DEFAULT);
@@ -182,9 +185,12 @@ thread_create (const char *name, int priority,
 
   /* Initialize thread. */
   init_thread (t, name, priority);
+#ifdef USERPROG
   t->parent_thread = thread_current();
+  lock_acquire(&child_list_lock);
   list_push_back(&thread_current()->child_list, &t->child_elem);
-
+  lock_release(&child_list_lock);
+#endif
   tid = t->tid = allocate_tid ();
 
   /* Stack frame for kernel_thread(). */
@@ -468,6 +474,7 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+#ifdef USERPROG  
   t->is_load_successful = false;
   t->exit_status = -1;
   t->fd = 2;
@@ -475,7 +482,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&t->file_list);
   sema_init(&t->child_sema, 0);
   sema_init(&t->sema, 0);
-
+#endif
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

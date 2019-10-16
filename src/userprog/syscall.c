@@ -112,17 +112,6 @@ syscall_handler (struct intr_frame *f)
   //thread_exit ();
 }
 
-int 
-sys_write (int fd, const void *buffer, unsigned size){
-  if(fd==1){ // Writes to console
-    putbuf(buffer, size);
-    return size;
-  }
-  else{ 
-    return 999;
-  }
-}
-
 void 
 sys_exit (int status){
 
@@ -178,6 +167,7 @@ bool sys_remove (const char *file){
   bool remove_bool = filesys_remove(file);
   return remove_bool;
 }
+
 int sys_open (const char *file){
 
   if(file==NULL) return -1;
@@ -185,17 +175,74 @@ int sys_open (const char *file){
   struct file* opened_file = filesys_open (file);
   if(opened_file == NULL) return -1;
   opened_file->file_fd = cur->fd;
+  lock_acquire(&file_list_lock);
   list_push_back(&cur->file_list, &opened_file->file_elem);
+  lock_release(&file_list_lock);
   cur->fd++;
   return opened_file->file_fd;
 
 }
+
+struct file* search_file(int fd){
+  struct thread* cur = thread_current();
+  struct file* file_to_read = NULL;
+  if(!list_empty(&cur->file_list)){
+    struct list_elem *fe;
+    for (fe = list_begin (&cur->file_list); fe != list_end (&cur->file_list);
+            fe = list_next (fe))
+    {
+      struct file *f = list_entry (fe, struct file, file_elem);
+      if (f->file_fd == fd){
+        file_to_read = f;
+        break;
+      }
+    }
+  }
+  
+  return file_to_read;
+}
+
 int sys_filesize (int fd){
-  return -1;
+
+  struct file* file = search_file(fd);
+  if(file==NULL)  return -1;
+  off_t filesize = file_length(file);
+  
+  return (int) filesize;
 }
+
 int sys_read (int fd, void *buffer, unsigned size){
-  return -1;
+
+  if(!is_user_vaddr(buffer)) sys_exit(-1);
+
+  if(fd==0) input_getc();
+  else{
+    struct file* file_to_read = search_file(fd);
+    if(file_to_read == NULL) return -1;
+    off_t read_size = file_read(file_to_read, buffer, size);
+
+    return (int) read_size;
+  }
 }
+
+int 
+sys_write (int fd, const void *buffer, unsigned size){
+
+  if(!is_user_vaddr(buffer)) sys_exit(-1);
+
+  if(fd==1){ // Writes to console
+    putbuf(buffer, size);
+    return size;
+  }
+  else{ 
+    struct file *file_to_write = search_file(fd);
+    if(file_to_write==NULL) return -1;
+    off_t write_size = file_write(file_to_write, buffer, size);
+
+    return (int)write_size;
+  }
+}
+
 void sys_seek (int fd, unsigned position){
   return;
 }

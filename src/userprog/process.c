@@ -201,6 +201,9 @@ process_wait (tid_t child_tid)
   struct thread *cur = thread_current();
   struct thread *child_thread = NULL;
 
+  lock_acquire(&child_list_lock);
+
+
   if(!list_empty(&thread_current()->child_list)){
     struct list_elem *c;
     for (c = list_begin (&thread_current()->child_list); c != list_end (&thread_current()->child_list);
@@ -213,6 +216,8 @@ process_wait (tid_t child_tid)
       }
     }
   }
+
+  lock_release(&child_list_lock);
 
   if(child_thread == NULL) return -1;
   
