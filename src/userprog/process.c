@@ -206,9 +206,9 @@ process_wait (tid_t child_tid)
   lock_acquire(&child_list_lock);
 
 
-  if(!list_empty(&thread_current()->child_list)){
+  if(!list_empty(&cur->child_list)){
     struct list_elem *c;
-    for (c = list_begin (&thread_current()->child_list); c != list_end (&thread_current()->child_list);
+    for (c = list_begin (&cur->child_list); c != list_end (&thread_current()->child_list);
             c = list_next (c))
     {
       struct thread *t = list_entry (c, struct thread, child_elem);
@@ -223,10 +223,9 @@ process_wait (tid_t child_tid)
   lock_release(&child_list_lock);
 
   if(child_thread == NULL) return -1;
+
   
   sema_down(&child_thread->sema);
-
-  //sema_up(&cur->parent_thread->wait_sema);
   
   exit_status = child_thread->exit_status;
   

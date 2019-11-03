@@ -24,4 +24,7 @@ unsigned sys_tell (int fd);
 void sys_close (int fd);
 struct file* search_file(int fd);
 
+void bad_ptr_exception(void* ptr);
+
+
 #endif /* userprog/syscall.h */

@@ -6,6 +6,7 @@
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include "threads/thread.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
@@ -63,6 +64,29 @@ filesys_create (const char *name, off_t initial_size)
    otherwise.
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
+
+struct file*
+search_file_in_open_file_list(const char *name){
+  struct thread* cur = thread_current();
+  struct file* file_to_read = NULL;
+  lock_acquire(&file_list_lock);
+  
+  if(!list_empty(&cur->file_list)){
+    struct list_elem *fe;
+    for (fe = list_begin (&cur->file_list); fe != list_end (&cur->file_list);
+            fe = list_next (fe))
+    {
+      struct file *f = list_entry (fe, struct file, file_elem);
+      if (f->file_name == name){
+        file_to_read = f;
+        break;
+      }
+    }
+  }
+  lock_release(&file_list_lock);
+  return file_to_read;
+}
+
 struct file *
 filesys_open (const char *name)
 {
@@ -73,7 +97,9 @@ filesys_open (const char *name)
     dir_lookup (dir, name, &inode);
   dir_close (dir);
 
-  return file_open (inode);
+  struct file *existing_file = search_file_in_open_file_list(name);
+  if(existing_file==NULL) return file_open (inode, name);
+  else return file_reopen(existing_file);
 }
 
 /* Deletes the file named NAME.

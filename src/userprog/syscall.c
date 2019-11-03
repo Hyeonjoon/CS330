@@ -15,7 +15,7 @@
 
 
 static void syscall_handler (struct intr_frame *);
-struct file* search_file_by_inode(struct inode *inode);
+struct file* search_file(int fd);
 void bad_ptr_exception(void* ptr);
 
 
@@ -86,17 +86,13 @@ syscall_handler (struct intr_frame *f)
       //   printf("here?\n");
       //   sys_exit(-1);
       // }
+
       read_size = sys_read((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
         (unsigned)*(uint32_t *)((f->esp)+12));
       f->eax = read_size;
       break;
 
     case SYS_WRITE:
-      // if (!is_user_vaddr(*(uint32_t *)((f->esp)+4)) || !is_user_vaddr(*(uint32_t *)((f->esp)+4))
-      //     || !is_user_vaddr(*(uint32_t *)((f->esp)+4))){
-      //   printf("here?!?@!?!??\n");
-      //   sys_exit(-1);
-      // }
       write_size = sys_write((int)*(uint32_t *)((f->esp)+4), (void *)*(uint32_t *)((f->esp)+8),
         (unsigned)*(uint32_t *)((f->esp)+12));
       f->eax = write_size;
@@ -134,14 +130,18 @@ void bad_ptr_exception(void* ptr){
 void 
 sys_exit (int status){
   struct thread* cur = thread_current();
+
   if(cur->parent_thread != NULL){
     cur->exit_status = status;
-    //file_allow_write(thread_current()->execute_file);
     lock_acquire(&filesys_lock);
     file_close(cur->execute_file);
     lock_release(&filesys_lock);
     sema_up(&cur->sema);
   }
+
+
+  
+
   printf("%s: exit(%d)\n", cur->name, status);
   thread_exit ();
   
@@ -150,11 +150,13 @@ sys_exit (int status){
 pid_t 
 sys_exec (const char *cmd_line){
 
+  bad_ptr_exception(cmd_line);
+  if(*cmd_line == 0) sys_exit(-1);
+  
   struct thread* cur = thread_current ();
 
   tid_t child_tid = process_execute (cmd_line);
   sema_down(&cur->load_sema);
-
 
   if(cur->is_load_successful) {
     return (pid_t) child_tid;
@@ -170,11 +172,15 @@ sys_wait (pid_t pid){
 
   struct thread* cur = thread_current ();
 
-  //sema_down(&cur->wait_sema);
-
   int exit_status = -1;
 
+  //sema_down(&cur->wait_sema);
+
   exit_status = process_wait((tid_t) pid);
+
+  
+  // if(!list_empty(&cur->child_list))
+  //   sema_down(&cur->child_list_sema);
   
 
 
@@ -214,59 +220,51 @@ int sys_open (const char *file){
 
   if(opened_file == NULL) return -1;
   opened_file->file_fd = cur->fd;
-  opened_file->open = true;
-  lock_acquire(&file_list_lock);
-  list_push_back(&cur->file_list, &opened_file->file_elem);
-  lock_release(&file_list_lock);
+
+  struct file *existing_file = search_file_in_open_file_list(file);
+  
+  if(existing_file==NULL){
+    lock_acquire(&file_list_lock);
+    list_push_back(&cur->file_list, &opened_file->file_elem);
+    lock_release(&file_list_lock);
+  }
+  else{
+    lock_acquire(&file_list_lock);
+    existing_file->open_count += 1;
+    lock_release(&file_list_lock);
+  }
+  
   cur->fd++;
   return opened_file->file_fd;
 
-  
-  
-
 }
 
-struct file* search_file(int fd){
-  struct thread* cur = thread_current();
-  struct file* file_to_read = NULL;
-  lock_acquire(&file_list_lock);
+void sys_close (int fd){
+
+  struct file *file_to_close = search_file(fd);
+  if(file_to_close == NULL || file_to_close->open == false)
+  {
+    sys_exit(-1);
+  }
   
-  if(!list_empty(&cur->file_list)){
-    struct list_elem *fe;
-    for (fe = list_begin (&cur->file_list); fe != list_end (&cur->file_list);
-            fe = list_next (fe))
-    {
-      struct file *f = list_entry (fe, struct file, file_elem);
-      if (f->file_fd == fd){
-        file_to_read = f;
-        break;
-      }
-    }
+  lock_acquire(&file_list_lock);
+
+  if(file_to_close->open_count == 1){
+    file_to_close->open = false;
+    list_remove(&file_to_close->file_elem);
+  }
+  else{
+    file_to_close->open_count -= 1;
   }
 
   lock_release(&file_list_lock);
-  return file_to_read;
-}
 
-struct file* search_file_by_inode(struct inode *inode){
-  struct thread* cur = thread_current();
-  struct file* file_to_read = NULL;
-  lock_acquire(&file_list_lock);
+  lock_acquire(&filesys_lock);
+  file_close(file_to_close);
+  lock_release(&filesys_lock);
   
-  if(!list_empty(&cur->file_list)){
-    struct list_elem *fe;
-    for (fe = list_begin (&cur->file_list); fe != list_end (&cur->file_list);
-            fe = list_next (fe))
-    {
-      struct file *f = list_entry (fe, struct file, file_elem);
-      if (f->inode == inode){
-        file_to_read = f;
-        break;
-      }
-    }
-  }
-  lock_release(&file_list_lock);
-  return file_to_read;
+
+  return;
 }
 
 int sys_filesize (int fd){
@@ -339,20 +337,27 @@ unsigned sys_tell (int fd){
   return (int) pos;
 }
 
-void sys_close (int fd){
-  struct file *file_to_close = search_file(fd);
-  if(file_to_close == NULL || file_to_close->open == false)
-  {
-    sys_exit(-1);
+
+
+
+struct file* search_file(int fd){
+  struct thread* cur = thread_current();
+  struct file* file_to_read = NULL;
+  lock_acquire(&file_list_lock);
+  
+  if(!list_empty(&cur->file_list)){
+    struct list_elem *fe;
+    for (fe = list_begin (&cur->file_list); fe != list_end (&cur->file_list);
+            fe = list_next (fe))
+    {
+      struct file *f = list_entry (fe, struct file, file_elem);
+      if (f->file_fd == fd){
+        file_to_read = f;
+        break;
+      }
+    }
   }
-  
-  file_to_close->open = false;
-  list_remove(&file_to_close->file_elem);
 
-  lock_acquire(&filesys_lock);
-  file_close(file_to_close);
-  lock_release(&filesys_lock);
-  
-
-  return;
+  lock_release(&file_list_lock);
+  return file_to_read;
 }

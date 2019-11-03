@@ -2,12 +2,16 @@
 #include <debug.h>
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "filesys/filesys.h"
+#include "threads/thread.h"
 
 /* Opens a file for the given INODE, of which it takes ownership,
    and returns the new file.  Returns a null pointer if an
    allocation fails or if INODE is null. */
+
+
 struct file *
-file_open (struct inode *inode) 
+file_open (struct inode *inode, char* name) 
 {
   struct file *file = calloc (1, sizeof *file);
   if (inode != NULL && file != NULL)
@@ -15,6 +19,9 @@ file_open (struct inode *inode)
       file->inode = inode;
       file->pos = 0;
       file->deny_write = false;
+      file->open = true;
+      file->open_count = 1;
+      file->file_name = name;
       return file;
     }
   else
@@ -30,7 +37,7 @@ file_open (struct inode *inode)
 struct file *
 file_reopen (struct file *file) 
 {
-  return file_open (inode_reopen (file->inode));
+  return file_open (inode_reopen (file->inode), file->file_name);
 }
 
 /* Closes FILE. */

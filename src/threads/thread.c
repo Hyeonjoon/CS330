@@ -484,10 +484,12 @@ init_thread (struct thread *t, const char *name, int priority)
   t->fd = 2;
   list_init(&t->child_list);
   list_init(&t->file_list);
+
   list_init(&t->read_file_list);
   sema_init(&t->load_sema, 0);
-  sema_init(&t->wait_sema, 0);
   sema_init(&t->sema, 0);
+  sema_init(&t->child_list_sema, 0);
+  
   t->execute_file = NULL;
 #endif
   t->magic = THREAD_MAGIC;

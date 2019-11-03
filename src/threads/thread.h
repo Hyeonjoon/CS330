@@ -108,9 +108,10 @@ struct thread
     struct thread *parent_thread;
 
     struct list child_list;
+    struct list dead_list;
     struct list_elem child_elem;        /* List item for child_list */
     struct semaphore load_sema;
-    struct semaphore wait_sema;
+    struct semaphore child_list_sema;
     struct semaphore sema;
     struct file *execute_file;
 
@@ -161,6 +162,8 @@ struct lock file_list_lock;
 struct lock child_list_lock;
 struct lock read_file_list_lock;
 struct lock filesys_lock;
+
+
 
 
 

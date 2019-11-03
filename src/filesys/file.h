@@ -11,15 +11,16 @@ struct file
     off_t pos;                  /* Current position. */
     bool deny_write;            /* Has file_deny_write() been called? */
     bool open;
+    int open_count;
+    char *file_name;
     int file_fd;
     struct list_elem file_elem;
-    char* file_name;
   };
 
 struct inode;
 
 /* Opening and closing files. */
-struct file *file_open (struct inode *);
+struct file *file_open (struct inode *, char*);
 struct file *file_reopen (struct file *);
 void file_close (struct file *);
 struct inode *file_get_inode (struct file *);
@@ -38,5 +39,6 @@ void file_allow_write (struct file *);
 void file_seek (struct file *, off_t);
 off_t file_tell (struct file *);
 off_t file_length (struct file *);
+
 
 #endif /* filesys/file.h */
